@@ -6,7 +6,7 @@ import {
     PromptInputActions,
     PromptInputTextarea,
 } from "@/components/ui/prompt-input"
-import { useRef, useState } from "react"
+import { useRef, useState, useCallback } from "react"
 import { generateMemeImage } from "@/lib/services/gemini-service"
 import { createClient } from "@/lib/supabase/client"
 
@@ -30,13 +30,14 @@ const IconArrowUp = () => (
     </svg>
 )
 
+// Cancel (square stop) icon
 const IconStop = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="4" y="4" width="16" height="16" rx="3" />
     </svg>
 )
 
-export type GenerationStatus = "idle" | "generating" | "uploading" | "done" | "error"
+export type GenerationStatus = "idle" | "generating" | "uploading" | "done" | "error" | "cancelled"
 
 interface PromptAreaProps {
     onStatusChange?: (status: GenerationStatus, errorMsg?: string, imageDataUrl?: string) => void
@@ -48,13 +49,26 @@ export function PromptArea({ onStatusChange, isActive }: PromptAreaProps) {
     const [isLoading, setIsLoading] = useState(false)
     const [files, setFiles] = useState<File[]>([])
     const uploadInputRef = useRef<HTMLInputElement>(null)
+    const abortRef = useRef<AbortController | null>(null)
 
-    const notify = (status: GenerationStatus, errorMsg?: string, imageDataUrl?: string) => {
+    const notify = useCallback((status: GenerationStatus, errorMsg?: string, imageDataUrl?: string) => {
         onStatusChange?.(status, errorMsg, imageDataUrl)
+    }, [onStatusChange])
+
+    const handleCancel = () => {
+        abortRef.current?.abort()
+        abortRef.current = null
+        setIsLoading(false)
+        notify("cancelled")
+        setTimeout(() => notify("idle"), 3000)
     }
 
     const handleSubmit = async () => {
         if (!input.trim() && files.length === 0) return
+
+        // Create new AbortController for this request
+        const controller = new AbortController()
+        abortRef.current = controller
 
         setIsLoading(true)
         notify("generating")
@@ -64,24 +78,32 @@ export function PromptArea({ onStatusChange, isActive }: PromptAreaProps) {
             const token = session?.access_token
             const referenceImage = files.length > 0 ? files[0] : undefined
 
-            // Single call: Gemini + R2 + DB all on server
             const { dataUrl } = await generateMemeImage(
                 input.trim() || "Make a funny wojak meme",
                 referenceImage,
-                token
+                token,
+                controller.signal
             )
+
+            // Check if aborted while waiting for response
+            if (controller.signal.aborted) return
 
             notify("done", undefined, dataUrl)
             setInput("")
             setFiles([])
-            setTimeout(() => notify("idle"), 8000)  // keep image visible longer
+            setTimeout(() => notify("idle"), 8000)
 
         } catch (err) {
+            if ((err as Error).name === "AbortError") {
+                // Already handled by handleCancel
+                return
+            }
             const message = err instanceof Error ? err.message : "Generation failed."
             notify("error", message)
             setTimeout(() => notify("idle"), 4000)
         } finally {
             setIsLoading(false)
+            abortRef.current = null
         }
     }
 
@@ -144,15 +166,30 @@ export function PromptArea({ onStatusChange, isActive }: PromptAreaProps) {
                         </label>
                     </PromptInputAction>
 
-                    <PromptInputAction tooltip={isLoading ? "Generating..." : "Generate meme!"}>
-                        <button
-                            onClick={handleSubmit}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white shadow-[3px_3px_0_0_rgba(0,0,0,0.3)] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,0.3)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:opacity-40"
-                            disabled={isLoading || (!input.trim() && files.length === 0)}
-                        >
-                            {isLoading ? <IconStop /> : <IconArrowUp />}
-                        </button>
-                    </PromptInputAction>
+                    <div className="flex items-center gap-2">
+                        {/* Cancel button — only shown while generating */}
+                        {isLoading && (
+                            <button
+                                onClick={handleCancel}
+                                className="flex items-center gap-1.5 px-3 h-9 rounded-xl border-2 border-black/40 text-black/50 hover:border-red-500 hover:text-red-500 text-xs font-black uppercase tracking-widest transition-all"
+                                title="Cancel generation"
+                            >
+                                <IconStop />
+                                Cancel
+                            </button>
+                        )}
+
+                        {/* Submit button */}
+                        <PromptInputAction tooltip={isLoading ? "Generating..." : "Generate zzal!"}>
+                            <button
+                                onClick={handleSubmit}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white shadow-[3px_3px_0_0_rgba(0,0,0,0.3)] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,0.3)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:opacity-40"
+                                disabled={isLoading || (!input.trim() && files.length === 0)}
+                            >
+                                <IconArrowUp />
+                            </button>
+                        </PromptInputAction>
+                    </div>
                 </PromptInputActions>
             </PromptInput>
         </div>

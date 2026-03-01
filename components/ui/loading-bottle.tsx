@@ -3,18 +3,18 @@
 import React from "react";
 
 const LoadingBottle: React.FC = () => {
-    return (
-        <div className="flex flex-col items-center justify-center gap-6">
-            <svg
-                viewBox="0 0 205 615"
-                className="cola w-[60px] fill-transparent stroke-black"
-                style={{
-                    strokeWidth: 15,
-                    strokeLinecap: "round" as const,
-                }}
-            >
-                <path d="M47 595c-8 0-26-6-26-34V261c0-17 9-29 16-38s16-28 16-28L68 59l-4-5s3-30 7-36 14-6 32-6 28 0 32 6 7 36 7 36l-4 5 15 136s9 19 16 28 16 21 16 38v300c0 28-18 34-26 34H47z" />
-                <style>{`
+  return (
+    <div className="flex flex-col items-center justify-center gap-6">
+      <svg
+        viewBox="0 0 205 615"
+        className="cola w-[60px] fill-transparent stroke-black"
+        style={{
+          strokeWidth: 15,
+          strokeLinecap: "round" as const,
+        }}
+      >
+        <path d="M47 595c-8 0-26-6-26-34V261c0-17 9-29 16-38s16-28 16-28L68 59l-4-5s3-30 7-36 14-6 32-6 28 0 32 6 7 36 7 36l-4 5 15 136s9 19 16 28 16 21 16 38v300c0 28-18 34-26 34H47z" />
+        <style>{`
           .cola {
             --pathlength: 1384;
             stroke-dashoffset: var(--pathlength);
@@ -28,12 +28,12 @@ const LoadingBottle: React.FC = () => {
             }
           }
         `}</style>
-            </svg>
-            <p className="text-sm font-black tracking-widest uppercase text-black/60 animate-pulse">
-                Generating your meme...
-            </p>
-        </div>
-    );
+      </svg>
+      <p className="text-sm font-black tracking-widest uppercase text-black/60 animate-pulse">
+        Generating your zzal...
+      </p>
+    </div>
+  );
 };
 
 export default LoadingBottle;

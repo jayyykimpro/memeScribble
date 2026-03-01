@@ -2,77 +2,21 @@ import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
 
-interface UploadMemeResult {
-    success: boolean;
-    url: string;
-    image: {
-        id: string;
-        url: string;
-        prompt: string;
-        country_code: string;
-        user_id: string;
-        created_at: string;
-    };
-}
-
-interface GeneratedImage {
+export interface GeneratedImage {
     id: string;
     url: string;
     prompt: string | null;
     country_code: string | null;
     user_id: string;
     created_at: string;
+    username?: string; // joined from users table
 }
 
-/**
- * Edge Function을 통해 R2에 밈 이미지를 업로드합니다.
- * 프론트엔드에서 R2 키를 직접 사용하지 않습니다.
- */
-export async function uploadMeme(
-    file: Blob,
-    prompt: string,
-    countryCode: string = "KR"
-): Promise<UploadMemeResult> {
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) {
-        throw new Error("Login required.");
-    }
-
-    const formData = new FormData();
-    formData.append("file", file, "meme.png");
-    formData.append("prompt", prompt);
-    formData.append("country_code", countryCode);
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const response = await fetch(`${supabaseUrl}/functions/v1/upload-meme`, {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${session.access_token}`,
-        },
-        body: formData,
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Upload failed: ${response.status}`);
-    }
-
-    return response.json();
-}
-
-/**
- * 트렌딩 밈 갤러리 데이터를 가져옵니다 (페이지네이션 지원).
- */
-export async function fetchTrendingMemes(
-    from: number,
-    to: number
-): Promise<GeneratedImage[]> {
+/** Trending memes — paginated, newest first, with username */
+export async function fetchTrendingMemes(from: number, to: number): Promise<GeneratedImage[]> {
     const { data, error } = await supabase
         .from("generated_images")
-        .select("*")
+        .select("id, url, prompt, country_code, user_id, created_at")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -81,7 +25,43 @@ export async function fetchTrendingMemes(
         return [];
     }
 
-    return data || [];
+    // Enrich with usernames (best-effort)
+    const rows = data || [];
+    const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+    let usernameMap: Record<string, string> = {};
+
+    if (userIds.length > 0) {
+        const { data: users } = await supabase
+            .from("users")
+            .select("id, username, email")
+            .in("id", userIds);
+
+        if (users) {
+            usernameMap = Object.fromEntries(
+                users.map((u) => [u.id, u.username || u.email?.split("@")[0] || "anon"])
+            );
+        }
+    }
+
+    return rows.map((r) => ({
+        ...r,
+        username: usernameMap[r.user_id] ?? "anon",
+    }));
 }
 
-export type { GeneratedImage, UploadMemeResult };
+/** My memes — for sidebar gallery */
+export async function fetchMyMemes(userId: string, from: number, to: number): Promise<GeneratedImage[]> {
+    const { data, error } = await supabase
+        .from("generated_images")
+        .select("id, url, prompt, country_code, user_id, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+    if (error) {
+        console.error("Failed to fetch my memes:", error);
+        return [];
+    }
+
+    return data || [];
+}

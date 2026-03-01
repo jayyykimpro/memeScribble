@@ -1,222 +1,252 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useInView } from 'react-intersection-observer';
-import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { fetchTrendingMemes, type GeneratedImage } from '@/lib/services/meme-service';
+import { MemeModal } from '@/components/ui/meme-modal';
+import { createClient } from '@/lib/supabase/client';
 
 const PAGE_SIZE = 12;
 
-// 감자(potato) 모양 스켈레톤
+const supabase = createClient();
+
 function PotatoSkeleton() {
     return (
-        <div className="relative w-full overflow-hidden rounded-xl border-2 border-black/20 bg-neutral-100 animate-pulse">
-            <svg viewBox="0 0 200 200" className="w-full h-auto opacity-20">
-                <path
-                    d="M100 20 Q140 10, 170 50 T180 120 Q175 170, 130 185 T60 180 Q20 160, 15 110 T30 50 Q50 15, 100 20Z"
-                    fill="black"
-                />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-full mb-5 overflow-hidden rounded-xl border-2 border-black/20 bg-neutral-100 animate-pulse" style={{ height: 220 }}>
+            <div className="flex items-center justify-center h-full">
                 <span className="text-xs font-black text-black/20 uppercase tracking-widest">loading...</span>
             </div>
         </div>
     );
 }
 
-export function ImageGallery({ refreshTrigger = 0 }: { refreshTrigger?: number }) {
+export function ImageGallery({
+    refreshTrigger = 0,
+    deletedIds = new Set<string>(),
+    onDeleteSync,
+}: {
+    refreshTrigger?: number;
+    deletedIds?: Set<string>;
+    onDeleteSync?: (id: string) => void;
+}) {
     const [images, setImages] = useState<GeneratedImage[]>([]);
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [initialLoad, setInitialLoad] = useState(true);
+    const [modalImage, setModalImage] = useState<GeneratedImage | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const loadingRef = useRef(false);
 
-    // refreshTrigger가 바뀌면 갤러리 전체 초기화
+    // Get current user
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data }) => {
+            setCurrentUserId(data.session?.user?.id ?? null);
+        });
+    }, []);
+
+    // Reset when refreshTrigger changes
     useEffect(() => {
         setImages([]);
         setPage(0);
         setHasMore(true);
         setInitialLoad(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refreshTrigger]);
 
-    const { ref: sentinelRef, inView } = useInView({
-        threshold: 0,
-        rootMargin: '400px',
-    });
+    const { ref: sentinelRef, inView } = useInView({ threshold: 0, rootMargin: '400px' });
 
     const loadMore = useCallback(async () => {
-        if (isLoading || !hasMore) return;
-
+        if (loadingRef.current || !hasMore) return;
+        loadingRef.current = true;
         setIsLoading(true);
         try {
             const from = page * PAGE_SIZE;
             const to = from + PAGE_SIZE - 1;
             const newImages = await fetchTrendingMemes(from, to);
-
-            if (newImages.length < PAGE_SIZE) {
-                setHasMore(false);
-            }
-
-            setImages((prev) => {
-                // 중복 방지
-                const existingIds = new Set(prev.map((img) => img.id));
-                const uniqueNew = newImages.filter((img) => !existingIds.has(img.id));
-                return [...prev, ...uniqueNew];
+            if (newImages.length < PAGE_SIZE) setHasMore(false);
+            setImages(prev => {
+                const existingIds = new Set(prev.map(img => img.id));
+                return [...prev, ...newImages.filter(img => !existingIds.has(img.id))];
             });
-            setPage((prev) => prev + 1);
+            setPage(prev => prev + 1);
         } catch (err) {
             console.error('Failed to load memes:', err);
         } finally {
+            loadingRef.current = false;
             setIsLoading(false);
             setInitialLoad(false);
         }
-    }, [page, isLoading, hasMore]);
+    }, [page, hasMore]);
 
-    // 최초 로딩 + refreshTrigger로 리셋된 후 재로딩
+    // Initial load after reset
     useEffect(() => {
         if (initialLoad) loadMore();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialLoad]);
 
-    // 무한 스크롤 트리거
+    // Infinite scroll trigger
     useEffect(() => {
-        if (inView && !isLoading && hasMore && !initialLoad) {
-            loadMore();
-        }
+        if (inView && !isLoading && hasMore && !initialLoad) loadMore();
     }, [inView, isLoading, hasMore, initialLoad, loadMore]);
 
-    // 이미지를 3열 masonry 형식으로 분배
-    const columns: GeneratedImage[][] = [[], [], [], []];
-    images.forEach((img, i) => {
-        columns[i % 4].push(img);
-    });
+    const handleDelete = async (imageId: string) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch(`/api/delete-meme?id=${imageId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+            setImages(prev => prev.filter(img => img.id !== imageId));
+            onDeleteSync?.(imageId); // notify sidebar
+        }
+    };
 
-    // 데이터가 없고 로딩도 끝났을 때
+    // Also filter out externally-deleted images (from sidebar)
+    const visibleImages = images.filter(img => !deletedIds.has(img.id));
+
     if (!initialLoad && images.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-                <svg viewBox="0 0 120 120" className="w-24 h-24 mb-4 opacity-30">
-                    <path
-                        d="M60 10 Q90 5, 105 35 T110 75 Q105 105, 75 115 T35 110 Q10 95, 8 65 T20 30 Q35 8, 60 10Z"
-                        fill="black"
-                    />
-                </svg>
-                <p className="text-lg font-black text-black/40 uppercase tracking-widest">
-                    No memes yet...
-                </p>
-                <p className="text-sm font-bold text-black/30 mt-2">
-                    Be the first to create one! ↑
-                </p>
+                <p className="text-lg font-black text-black/40 uppercase tracking-widest">No memes yet...</p>
+                <p className="text-sm font-bold text-black/30 mt-2">Be the first to create one! ↑</p>
             </div>
         );
     }
 
     return (
-        <div className="relative flex w-full flex-col items-center justify-center pb-10">
-            <div className="mx-auto grid w-full max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                {columns.map((col, colIdx) => (
-                    <div key={colIdx} className="grid gap-5">
-                        {col.map((image) => (
-                            <MemeCard key={image.id} image={image} />
-                        ))}
-                    </div>
+        <>
+            {/* Modal */}
+            <MemeModal image={modalImage} onClose={() => setModalImage(null)} />
+
+            {/*
+             * CSS columns masonry layout — browser handles height balancing automatically.
+             * No more i%4 column assignment causing unequal heights.
+             */}
+            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-5 w-full">
+                {visibleImages.map(image => (
+                    <MemeCard
+                        key={image.id}
+                        image={image}
+                        isOwner={currentUserId === image.user_id}
+                        onOpen={() => setModalImage(image)}
+                        onDelete={() => handleDelete(image.id)}
+                    />
+                ))}
+
+                {/* Skeleton loaders appended inline for masonry */}
+                {isLoading && Array.from({ length: 4 }).map((_, i) => (
+                    <PotatoSkeleton key={`skel-${i}`} />
                 ))}
             </div>
 
-            {/* 스켈레톤 로딩 */}
-            {isLoading && (
-                <div className="mx-auto grid w-full max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-4 mt-5">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <PotatoSkeleton key={`skel-${i}`} />
-                    ))}
-                </div>
-            )}
-
-            {/* 무한 스크롤 센티널 */}
             {hasMore && <div ref={sentinelRef} className="h-10 w-full" />}
 
-            {/* 더 이상 데이터 없음 */}
             {!hasMore && images.length > 0 && (
-                <p className="mt-8 text-sm font-bold text-black/30 uppercase tracking-widest">
-                    — that&apos;s all folks —
-                </p>
+                <p className="mt-8 text-center text-sm font-bold text-black/30 uppercase tracking-widest">— that&apos;s all folks —</p>
             )}
-        </div>
+        </>
     );
 }
 
-// 개별 밈 카드
-function MemeCard({ image }: { image: GeneratedImage }) {
+interface MemeCardProps {
+    image: GeneratedImage;
+    isOwner: boolean;
+    onOpen: () => void;
+    onDelete: () => void;
+}
+
+function MemeCard({ image, isOwner, onOpen, onDelete }: MemeCardProps) {
     const [isLoaded, setIsLoaded] = useState(false);
     const [hasError, setHasError] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
-    const handleDownload = async () => {
-        try {
-            // Use server-side proxy to avoid CORS on external R2 URLs
-            const proxyUrl = `/api/download?url=${encodeURIComponent(image.url)}`;
-            const a = document.createElement('a');
-            a.href = proxyUrl;
-            a.download = `meme-${image.id}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        } catch (err) {
-            console.error('Download failed:', err);
-        }
+    const handleDownload = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const a = document.createElement('a');
+        a.href = `/api/download?url=${encodeURIComponent(image.url)}`;
+        a.download = `meme-${image.id}.png`;
+        a.click();
+    };
+
+    const handleDeleteClick = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('Delete this meme?')) return;
+        setDeleting(true);
+        await onDelete();
     };
 
     return (
-        <div className="group relative overflow-hidden rounded-xl border-2 border-black bg-neutral-50 shadow-[4px_4px_0_0_rgba(0,0,0,1)] transition-all hover:-translate-y-1 hover:shadow-[2px_6px_0_0_rgba(0,0,0,1)]">
-            <AspectRatio ratio={1}>
-                {!hasError ? (
-                    <img
-                        alt={image.prompt || 'Generated meme'}
-                        src={image.url}
-                        className={cn(
-                            'size-full object-cover transition-opacity duration-500',
-                            isLoaded ? 'opacity-100' : 'opacity-0'
-                        )}
-                        onLoad={() => setIsLoaded(true)}
-                        onError={() => setHasError(true)}
-                        loading="lazy"
-                    />
-                ) : (
-                    <div className="size-full flex items-center justify-center bg-neutral-100">
-                        <span className="text-xs font-bold text-black/30">(broken)</span>
-                    </div>
-                )}
+        /* break-inside-avoid keeps each card in one column */
+        <div
+            className="break-inside-avoid mb-5 group relative overflow-hidden rounded-xl border-2 border-black bg-neutral-50 shadow-[4px_4px_0_0_rgba(0,0,0,1)] transition-all hover:-translate-y-1 hover:shadow-[2px_6px_0_0_rgba(0,0,0,1)] cursor-pointer"
+            onClick={onOpen}
+        >
+            {!hasError ? (
+                <img
+                    alt={image.prompt || 'Generated meme'}
+                    src={image.url}
+                    className={cn('w-full h-auto object-cover transition-opacity duration-500', isLoaded ? 'opacity-100' : 'opacity-0')}
+                    onLoad={() => setIsLoaded(true)}
+                    onError={() => setHasError(true)}
+                    loading="lazy"
+                />
+            ) : (
+                <div className="h-40 flex items-center justify-center bg-neutral-100">
+                    <span className="text-xs font-bold text-black/30">(broken image)</span>
+                </div>
+            )}
 
-                {/* 로딩 상태 */}
-                {!isLoaded && !hasError && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 animate-pulse">
-                        <span className="text-xs font-bold text-black/20">...</span>
-                    </div>
-                )}
+            {!isLoaded && !hasError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 animate-pulse">
+                    <span className="text-xs font-bold text-black/20">...</span>
+                </div>
+            )}
 
-                {/* Hover 오버레이 — Download 버튼 */}
-                <div className="absolute inset-0 flex items-end justify-end p-3 bg-gradient-to-t from-black/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+            {/* Hover action overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <div className="min-w-0 flex-1 mr-2">
+                    <p className="text-white text-xs font-black truncate">@{image.username ?? 'anon'}</p>
+                </div>
+                <div className="flex gap-1.5 pointer-events-auto">
+                    {/* Download */}
                     <button
                         onClick={handleDownload}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border-2 border-black shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_rgba(0,0,0,1)] transition-all"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border-2 border-black shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:bg-black hover:text-white transition-colors"
                         title="Download"
                     >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                             <polyline points="7 10 12 15 17 10" />
                             <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                     </button>
-                </div>
-            </AspectRatio>
 
-            {/* 프롬프트 텍스트 */}
+                    {/* Delete — only for owner */}
+                    {isOwner && (
+                        <button
+                            onClick={handleDeleteClick}
+                            disabled={deleting}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border-2 border-black shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors disabled:opacity-40"
+                            title="Delete my meme"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v6M14 11v6" />
+                                <path d="M9 6V4h6v2" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Prompt caption */}
             {image.prompt && (
                 <div className="px-3 py-2 border-t-2 border-black bg-white">
-                    <p className="text-xs font-bold text-black/60 truncate font-mono">
-                        &quot;{image.prompt}&quot;
-                    </p>
+                    <p className="text-xs font-bold text-black/50 truncate font-mono">&quot;{image.prompt}&quot;</p>
                 </div>
             )}
         </div>

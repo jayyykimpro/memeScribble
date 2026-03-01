@@ -1,17 +1,14 @@
 export interface GenerateMemeResult {
-    dataUrl: string;   // base64 data URL — always present, image renders immediately
-    url: string | null; // R2 public URL — present only if R2 upload succeeded
+    dataUrl: string;
+    url: string | null;
     mimeType: string;
 }
 
-/**
- * Generates a Wojak-style meme. Returns base64 dataUrl immediately.
- * R2 upload happens server-side; url is null if R2 is unavailable.
- */
 export async function generateMemeImage(
     prompt: string,
     referenceImageFile?: File,
-    authToken?: string
+    authToken?: string,
+    signal?: AbortSignal
 ): Promise<GenerateMemeResult> {
     const formData = new FormData();
     formData.append("prompt", prompt);
@@ -29,6 +26,7 @@ export async function generateMemeImage(
         method: "POST",
         headers,
         body: formData,
+        signal,
     });
 
     if (!response.ok) {

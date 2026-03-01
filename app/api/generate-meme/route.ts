@@ -32,9 +32,17 @@ export async function POST(req: NextRequest) {
             } catch { /* skip user lookup */ }
         }
 
-        // ── 2. Build Gemini request ──────────────────────────────────
-        // Use generateImages for image-specific model — no systemInstruction, no config
-        const wojakPrompt = `Wojak meme, crude MS Paint style, shaky lines, asymmetric eyes, white background. ${prompt}`;
+        // ── 2. Build prompt: STYLE (1st priority) + USER REQUEST (2nd) ─
+        const wojakPrompt = [
+            "=== MANDATORY STYLE GUIDE (STRICTLY FOLLOW) ===",
+            WOJAK_SYSTEM_PROMPT.trim(),
+            "",
+            "=== USER SCENE (DRAW THIS IN THE ABOVE STYLE) ===",
+            `"${prompt}"`,
+            "",
+            "IMPORTANT: The style guide above overrides everything.",
+            "Output must be an IMAGE, never just text.",
+        ].join("\n");
 
         const userParts: object[] = [
             { text: wojakPrompt },
