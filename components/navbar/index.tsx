@@ -26,10 +26,10 @@ export function Navbar() {
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-white font-mono">
-            <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-8">
+            <nav className="flex w-full items-center justify-between px-6 py-3 md:px-12">
                 {/* 왼쪽: 타이틀 */}
                 <Link
-                    href="/"
+                    href={user ? "/dashboard" : "/"}
                     className="text-xl font-black uppercase tracking-widest text-black hover:underline decoration-wavy transition-all"
                 >
                     Meme me

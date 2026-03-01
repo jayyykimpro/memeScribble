@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/context/auth-context";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 // 구글 로그인 가이드라인(GSI) 규격에 맞춘 공식 스타일 버튼 컴포넌트
 const GoogleSignInButton = ({ onClick }: { onClick: () => void }) => (
@@ -82,7 +84,22 @@ const ScribbleDivider = () => (
 );
 
 export default function AuthPage() {
-    const { signInWithGoogle } = useAuth();
+    const { user, loading, signInWithGoogle } = useAuth();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!loading && user) {
+            router.replace("/dashboard");
+        }
+    }, [user, loading, router]);
+
+    if (loading || user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-white font-mono">
+                <p className="text-xl font-bold animate-pulse text-black">Checking vibe...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white font-mono text-black px-4">
