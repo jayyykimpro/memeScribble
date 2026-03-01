@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/context/auth-context";
 
 const navLinks = [
     { label: "Features", href: "#features" },
@@ -11,6 +13,16 @@ const navLinks = [
 
 export function Navbar() {
     const [menuOpen, setMenuOpen] = React.useState(false);
+    const { user, loading, signOut } = useAuth();
+    const router = useRouter();
+
+    const handleSignOut = async () => {
+        await signOut();
+        router.push("/");
+    };
+
+    const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
+    const name = (user?.user_metadata?.full_name ?? user?.email ?? "") as string;
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-white font-mono">
@@ -37,17 +49,48 @@ export function Navbar() {
                     ))}
                 </ul>
 
-                {/* 오른쪽: CTA 버튼 */}
-                <div className="hidden md:flex">
-                    <Link
-                        href="#"
-                        className="rounded-full border-2 border-black bg-black px-5 py-2 text-sm font-black uppercase tracking-widest text-white shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,0.3)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
-                    >
-                        Get Started
-                    </Link>
+                {/* 오른쪽: 로그인 상태에 따라 다른 UI */}
+                <div className="hidden md:flex items-center gap-3">
+                    {loading ? (
+                        <div className="h-9 w-24 animate-pulse rounded-full bg-black/10" />
+                    ) : user ? (
+                        <>
+                            {/* 유저 아바타 + 이름 */}
+                            <div className="flex items-center gap-2">
+                                {avatarUrl ? (
+                                    <img
+                                        src={avatarUrl}
+                                        alt={name}
+                                        className="h-8 w-8 rounded-full border-2 border-black object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-black bg-black text-xs font-black text-white">
+                                        {name.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+                                <span className="max-w-[120px] truncate text-sm font-bold text-black">
+                                    {name}
+                                </span>
+                            </div>
+                            {/* 로그아웃 버튼 */}
+                            <button
+                                onClick={handleSignOut}
+                                className="rounded-full border-2 border-black bg-white px-4 py-1.5 text-sm font-black uppercase tracking-widest text-black shadow-[3px_3px_0_0_rgba(0,0,0,1)] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,1)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+                            >
+                                Sign Out
+                            </button>
+                        </>
+                    ) : (
+                        <Link
+                            href="/auth"
+                            className="rounded-full border-2 border-black bg-black px-5 py-2 text-sm font-black uppercase tracking-widest text-white shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_rgba(0,0,0,0.3)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
+                        >
+                            Get Started
+                        </Link>
+                    )}
                 </div>
 
-                {/* 모바일 햄버거 버튼 (SVG만 사용) */}
+                {/* 모바일 햄버거 버튼 */}
                 <button
                     className="flex md:hidden flex-col gap-1.5 p-2"
                     onClick={() => setMenuOpen((v) => !v)}
@@ -86,13 +129,22 @@ export function Navbar() {
                             </li>
                         ))}
                         <li>
-                            <Link
-                                href="#"
-                                onClick={() => setMenuOpen(false)}
-                                className="inline-block rounded-full border-2 border-black bg-black px-5 py-2 text-sm font-black uppercase tracking-widest text-white"
-                            >
-                                Get Started
-                            </Link>
+                            {user ? (
+                                <button
+                                    onClick={() => { setMenuOpen(false); handleSignOut(); }}
+                                    className="inline-block rounded-full border-2 border-black bg-white px-5 py-2 text-sm font-black uppercase tracking-widest text-black"
+                                >
+                                    Sign Out
+                                </button>
+                            ) : (
+                                <Link
+                                    href="/auth"
+                                    onClick={() => setMenuOpen(false)}
+                                    className="inline-block rounded-full border-2 border-black bg-black px-5 py-2 text-sm font-black uppercase tracking-widest text-white"
+                                >
+                                    Get Started
+                                </Link>
+                            )}
                         </li>
                     </ul>
                 </div>
