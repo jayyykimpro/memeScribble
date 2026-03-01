@@ -38,7 +38,7 @@ export async function uploadMeme(
     } = await supabase.auth.getSession();
 
     if (!session) {
-        throw new Error("로그인이 필요합니다.");
+        throw new Error("Login required.");
     }
 
     const formData = new FormData();

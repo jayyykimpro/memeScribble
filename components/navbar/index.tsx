@@ -26,8 +26,8 @@ export function Navbar() {
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-white font-mono">
-            <nav className="flex w-full items-center justify-between px-6 py-3 md:px-12">
-                {/* 왼쪽: 타이틀 */}
+            <nav className="relative flex w-full items-center justify-between px-6 py-3 md:px-12">
+                {/* Left: Title */}
                 <Link
                     href={user ? "/dashboard" : "/"}
                     className="text-xl font-black uppercase tracking-widest text-black hover:underline decoration-wavy transition-all"
@@ -35,8 +35,8 @@ export function Navbar() {
                     Meme me
                 </Link>
 
-                {/* 중앙: 데스크탑 네비 링크 */}
-                <ul className="hidden md:flex items-center gap-8">
+                {/* Center: Nav links — absolute centered */}
+                <ul className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8">
                     {navLinks.map((link) => (
                         <li key={link.label}>
                             <Link

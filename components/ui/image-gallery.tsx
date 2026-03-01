@@ -25,12 +25,21 @@ function PotatoSkeleton() {
     );
 }
 
-export function ImageGallery() {
+export function ImageGallery({ refreshTrigger = 0 }: { refreshTrigger?: number }) {
     const [images, setImages] = useState<GeneratedImage[]>([]);
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [initialLoad, setInitialLoad] = useState(true);
+
+    // refreshTrigger가 바뀌면 갤러리 전체 초기화
+    useEffect(() => {
+        setImages([]);
+        setPage(0);
+        setHasMore(true);
+        setInitialLoad(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshTrigger]);
 
     const { ref: sentinelRef, inView } = useInView({
         threshold: 0,
@@ -65,11 +74,11 @@ export function ImageGallery() {
         }
     }, [page, isLoading, hasMore]);
 
-    // 최초 로딩
+    // 최초 로딩 + refreshTrigger로 리셋된 후 재로딩
     useEffect(() => {
-        loadMore();
+        if (initialLoad) loadMore();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [initialLoad]);
 
     // 무한 스크롤 트리거
     useEffect(() => {
@@ -145,16 +154,14 @@ function MemeCard({ image }: { image: GeneratedImage }) {
 
     const handleDownload = async () => {
         try {
-            const response = await fetch(image.url);
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
+            // Use server-side proxy to avoid CORS on external R2 URLs
+            const proxyUrl = `/api/download?url=${encodeURIComponent(image.url)}`;
             const a = document.createElement('a');
-            a.href = url;
+            a.href = proxyUrl;
             a.download = `meme-${image.id}.png`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
         } catch (err) {
             console.error('Download failed:', err);
         }
